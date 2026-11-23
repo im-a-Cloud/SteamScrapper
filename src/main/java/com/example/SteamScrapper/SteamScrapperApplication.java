@@ -13,8 +13,12 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @SpringBootApplication
 public class SteamScrapperApplication {
@@ -24,6 +28,7 @@ public class SteamScrapperApplication {
 		SpringApplication.run(SteamScrapperApplication.class, args);
         String url = "https://store.steampowered.com/wishlist/profiles/76561198120867657/?sort=discount";
         Map<String, JogoExtraido> jogos = new LinkedHashMap<>();
+        Pattern padraoPreco = Pattern.compile("R\\$\\s*[\\d.,]+");
 
         try (Playwright playwright = Playwright.create();
              Browser browser = playwright.chromium().launch(
@@ -73,11 +78,21 @@ public class SteamScrapperApplication {
             """);
                 page.waitForTimeout(1000);
             }
+            for (var j : jogos.values()) {
+                String textoPreco = j.preco() != null ? j.preco() : "";
+                List<String> encontrados = new ArrayList<>();
 
-            System.out.println("Itens acumulados: " + jogos.size());
-            jogos.values().forEach(j ->
-                    System.out.println(j.chave() + " | " + j.nome() + " | " + j.preco())
-            );
+                Matcher matcher = padraoPreco.matcher(textoPreco);
+                while (matcher.find()) {
+                    String valor = matcher.group().replaceAll("\\s+", "");
+                    encontrados.add(valor);
+                }
+
+                String precoCheio = !encontrados.isEmpty() ? encontrados.get(0) : "Não encontrado";
+                String precoDesconto = encontrados.size() >= 2 ? encontrados.get(1) : "Não encontrado";
+
+                System.out.println(j.nome() + " | Cheio: " + precoCheio + " | Desconto: " + precoDesconto);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
