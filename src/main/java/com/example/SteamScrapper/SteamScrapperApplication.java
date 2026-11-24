@@ -43,7 +43,7 @@ public class SteamScrapperApplication {
     public static void main(String[] args) {
         SpringApplication.run(SteamScrapperApplication.class, args);
 
-        String urlWlSteam = "https://store.steampowered.com/wishlist/id/ppaulo_hh/?sort=discount";
+        String urlWlSteam = "https://store.steampowered.com/wishlist/profiles/76561199092903131/?sort=discount";
         Map<String, JogoExtraido> jogos = new LinkedHashMap<>();
 
         try (Playwright playwright = Playwright.create();
@@ -61,7 +61,7 @@ public class SteamScrapperApplication {
                 }
             });
 
-            // Espera a página carregar por completo e renderizar os itens
+            // Espera a página carregar por completo e renderizar os itens desejados(itens da WL usando a tagWishlistItem)
             page.navigate(urlWlSteam, new Page.NavigateOptions().setWaitUntil(WaitUntilState.NETWORKIDLE));
             page.waitForSelector(
                     "[data-rfd-draggable-id^=WishlistItem-], [data-rfd-drag-handle-draggable-id^=WishlistItem-], .PE-3oq-yIvg-",
@@ -211,32 +211,47 @@ public class SteamScrapperApplication {
             return null;
         }
 
-        String urlOferta = normalizarEspacos(row.attr("href"));
-
         Element spanLoja = row.selectFirst(".cell--shop span");
         String loja = spanLoja != null ? normalizarEspacos(spanLoja.ownText()) : "";
+
+        if (!"Steam".equalsIgnoreCase(loja)) {
+            return null;
+        }
+
+        String urlOferta = normalizarEspacos(row.attr("href"));
 
         Element promoEl = row.selectFirst(".cell--shop .promo");
         String tipoPromocao = promoEl != null ? normalizarEspacos(promoEl.text()) : "";
 
+        // Menor preço historico e diferença via regex
         String menorPrecoHistorico = "";
         String diferencaMenorPreco = "";
         Element cellLow = row.selectFirst(".cell--low");
         if (cellLow != null) {
-            Element diffEl = cellLow.selectFirst(".diff");
-            if (diffEl != null) {
-                diferencaMenorPreco = normalizarEspacos(diffEl.text());
+            String textoLow = normalizarEspacos(cellLow.text());
+            Matcher mLow = PADRAO_PRECO.matcher(textoLow);
+            List<String> precosLow = new ArrayList<>();
+            while (mLow.find()) {
+                precosLow.add(mLow.group().replaceAll("\\s+", " "));
             }
-            Element blocoLow = cellLow.selectFirst("div:has(.label)");
-            if (blocoLow != null) {
-                String textoSemLabel = normalizarEspacos(blocoLow.ownText())
-                        .replaceFirst("(?i)^store\\s*low\\s*", "");
-                menorPrecoHistorico = normalizarEspacos(textoSemLabel);
+            if (!precosLow.isEmpty()) {
+                menorPrecoHistorico = precosLow.get(0);
+            }
+            if (precosLow.size() >= 2) {
+                diferencaMenorPreco = "lower by " + precosLow.get(1);
+            } else if (textoLow.toLowerCase(Locale.ROOT).contains("same")) {
+                diferencaMenorPreco = "same";
             }
         }
 
-        Element cutEl = row.selectFirst(".cell--cut span.cut");
-        String desconto = cutEl != null ? normalizarEspacos(cutEl.text()) : "";
+        String desconto = "";
+        Element cutCell = row.selectFirst(".cell--cut");
+        if (cutCell != null) {
+            Matcher mCut = Pattern.compile("-\\d+%").matcher(normalizarEspacos(cutCell.text()));
+            if (mCut.find()) {
+                desconto = mCut.group();
+            }
+        }
 
         Element expiryEl = row.selectFirst(".cell--cut .expiry");
         String tempoRestante = expiryEl != null ? normalizarEspacos(expiryEl.text()) : "";
@@ -247,12 +262,27 @@ public class SteamScrapperApplication {
         if (cellPrice != null) {
             Element oldEl = cellPrice.selectFirst(".old");
             if (oldEl != null) {
-                precoAntigo = normalizarEspacos(oldEl.text());
+                Matcher mOld = PADRAO_PRECO.matcher(normalizarEspacos(oldEl.text()));
+                if (mOld.find()) {
+                    precoAntigo = mOld.group().replaceAll("\\s+", " ");
+                }
             }
-            Element primeiraDivPreco = cellPrice.selectFirst("div:not(.old)");
-            if (primeiraDivPreco != null) {
-                precoAtual = normalizarEspacos(primeiraDivPreco.text());
+
+            // Clona para remover .old e pegar só o preço atual
+            Element copiaPreco = cellPrice.clone();
+            Element oldNaCopia = copiaPreco.selectFirst(".old");
+            if (oldNaCopia != null) {
+                oldNaCopia.remove();
             }
+            Matcher mAtual = PADRAO_PRECO.matcher(normalizarEspacos(copiaPreco.text()));
+            if (mAtual.find()) {
+                precoAtual = mAtual.group().replaceAll("\\s+", " ");
+            }
+            double precoAtualDouble = Double.parseDouble(precoAtual);
+            double descontoDouble = Double.parseDouble(desconto);
+            double precoAntigoDouble = Double.parseDouble(precoAntigo);
+            if (precoAtualDouble <= 0) {}
+
         }
 
         return new OfertaExtraida(
@@ -270,22 +300,27 @@ public class SteamScrapperApplication {
 
     public static void coletarIsThereAnyDeal(String html) {
         Document doc = Jsoup.parse(html);
-        Element linhaImportante = doc.selectFirst("a.row");
-        OfertaExtraida oferta = extrairOferta(linhaImportante);
+        Elements linhas = doc.select("a.row");
 
-        if (oferta == null) {
-            System.out.println("Nenhuma linha .row encontrada na página.");
-            return;
+        boolean encontrouSteam = false;
+        for (Element linha : linhas) {
+            OfertaExtraida oferta = extrairOferta(linha);
+            if (oferta == null) {
+                continue;
+            }
+            encontrouSteam = true;
+
+            System.out.println("URL: " + oferta.urlOferta());
+            System.out.println("Loja: " + oferta.loja());
+            System.out.println("Menor preço (store low): " + oferta.menorPrecoHistorico());
+            System.out.println("Desconto: " + oferta.desconto());
+            System.out.println("Preço atual: " + oferta.precoAtual());
+            System.out.println("Preço antigo: " + oferta.precoAntigo());
+            System.out.println("-----------------------------------");
         }
 
-        System.out.println("URL: " + oferta.urlOferta());
-        System.out.println("Loja: " + oferta.loja());
-        System.out.println("Promoção: " + oferta.tipoPromocao());
-        System.out.println("Menor preço (store low): " + oferta.menorPrecoHistorico());
-        System.out.println("Diferença menor preço: " + oferta.diferencaMenorPreco());
-        System.out.println("Desconto: " + oferta.desconto());
-        System.out.println("Tempo restante: " + oferta.tempoRestante());
-        System.out.println("Preço atual: " + oferta.precoAtual());
-        System.out.println("Preço antigo: " + oferta.precoAntigo());
+        if (!encontrouSteam) {
+            System.out.println("Nenhuma oferta da Steam encontrada na página.");
+        }
     }
 }
