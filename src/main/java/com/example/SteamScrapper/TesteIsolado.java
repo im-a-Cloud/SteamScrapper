@@ -24,7 +24,6 @@ public class TesteIsolado {
     private static final Pattern PADRAO_DESCONTO = Pattern.compile("-\\d+%");
     private static final Pattern PADRAO_PORCENTAGEM = Pattern.compile("-?\\d+\\s*%");
     private static final Pattern PADRAO_DIGITOS = Pattern.compile("\\d+");
-
     // Limiar para suspeitar que o menor histórico é de preço antiga (reajuste forte)
     private static final int LIMIAR_DESCONTO_ANOMALO_PCT = 85;
 
