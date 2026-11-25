@@ -58,11 +58,12 @@ public class TesteIsolado {
                 "https://isthereanydeal.com/game/yakuza-5-remastered/info/",
                 "https://isthereanydeal.com/game/vampire-the-masquerade-bloodlines/info/",
                 "https://isthereanydeal.com/game/dark-souls-iii/info/",
-                "https://isthereanydeal.com/game/final-fantasy-vii-remake-intergrade/info/"
+                "https://isthereanydeal.com/game/final-fantasy-vii-remake-intergrade/info/",
+                "https://isthereanydeal.com/game/crash-bandicoot-n-sane-trilogy/info/"
         );
-
+        //apenas lê a URL sem abrir o navegador
         boolean headless = true;
-
+        //cria o playwright que vai abrir e ler a página no modo headless
         try (Playwright playwright = Playwright.create();
              Browser browser = playwright.chromium().launch(
                      new BrowserType.LaunchOptions().setHeadless(headless)
@@ -76,10 +77,10 @@ public class TesteIsolado {
 
                 page.navigate(urlAlvo, new Page.NavigateOptions().setWaitUntil(WaitUntilState.NETWORKIDLE));
                 page.waitForTimeout(1000);
-
+                //pegar o gráfico de preços do jogo
                 Document doc = Jsoup.parse(page.content());
                 Elements linhas = doc.select("a.row");
-
+                //leva em conta somente ofertas na steam
                 boolean encontrouSteam = false;
                 for (Element linha : linhas) {
                     OfertaSteamBruta bruta = extrairOfertaSteam(linha);
@@ -176,6 +177,11 @@ public class TesteIsolado {
                 + (analise.descontoHistoricoEstimado() ? " (estimado)" : " (explícito no HTML)"));
         System.out.println("Houve reajuste forte de preço? : " + (analise.houveReajusteForte() ? "SIM" : "NÃO"));
         System.out.println("Diagnóstico                    : " + analise.observacao());
+        if (analise.descontoHistoricoPct() > 0
+                && analise.descontoAtualPct() >= analise.descontoHistoricoPct()
+                && !analise.houveReajusteForte()) {
+            System.out.println("COMPRA SAPORRA");
+        }
         System.out.println("------------------------------------------");
     }
 
@@ -271,7 +277,7 @@ public class TesteIsolado {
                 precoCheioExibido
         );
     }
-
+    //remove espaços do nome do jogo para fazer a pesquisa(vai ser usado mais futuramente)
     private static String normalizarEspacos(String texto) {
         if (texto == null) {
             return "";
@@ -280,7 +286,7 @@ public class TesteIsolado {
                 .replaceAll("\\s+", " ")
                 .trim();
     }
-
+    //Converte o preço do jogo em número com ponto decimal
     public static BigDecimal parsePrecoBrl(String valor) {
         if (valor == null || valor.isBlank()) {
             return null;
@@ -304,7 +310,7 @@ public class TesteIsolado {
         }
         return new BigDecimal(numeroBruto);
     }
-
+    //converte o desconto em número
     public static int descontoEmNumero(String valor) {
         if (valor == null || valor.isBlank()) {
             return 0;

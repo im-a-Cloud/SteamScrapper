@@ -18,33 +18,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @SpringBootApplication
 public class SteamScrapperApplication {
 
-    private static final Pattern PADRAO_PRECO = Pattern.compile("R\\$\\s*[\\d.,]+");
-    private static final Pattern PADRAO_DESCONTO = Pattern.compile("-\\d+%");
-    private static final Pattern PADRAO_DIGITOS = Pattern.compile("\\d+");
-
-    record JogoExtraido(String chave, String nome, String preco) {}
-
-    record OfertaExtraida(
-            String urlOferta,
-            String loja,
-            String tipoPromocao,
-            String menorPrecoHistorico,
-            String diferencaMenorPreco,
-            String desconto,
-            String tempoRestante,
-            String precoAtual,
-            String precoAntigo
-    ) {}
+    record JogoExtraido(String chave, String nome) {}
 
     public static void main(String[] args) {
         SpringApplication.run(SteamScrapperApplication.class, args);
-
+        List <String> listaLinksJogosITAD = new ArrayList<>();
         String urlWlSteam = "https://store.steampowered.com/wishlist/profiles/76561199092903131/?sort=discount";
         Map<String, JogoExtraido> jogos = new LinkedHashMap<>();
 
@@ -98,28 +80,16 @@ public class SteamScrapperApplication {
             }
 
             for (var j : jogos.values()) {
-                String textoPreco = j.preco() != null ? j.preco() : "";
                 List<String> encontrados = new ArrayList<>();
 
-                Matcher matcher = PADRAO_PRECO.matcher(textoPreco);
-                while (matcher.find()) {
-                    encontrados.add(matcher.group().replaceAll("\\s+", ""));
-                }
-
-                String precoCheio = !encontrados.isEmpty() ? encontrados.get(0) : "Não encontrado";
-                String precoDesconto = encontrados.size() >= 2 ? encontrados.get(1) : "Não encontrado";
-
-                System.out.println(j.nome() + " | Cheio: " + precoCheio + " | Desconto: " + precoDesconto);
+                System.out.println("Nome jogo: "+ j.nome());
 
                 String slugDoJogo = transformarNomeEmLink(j.nome());
                 if (!slugDoJogo.isBlank()) {
                     String urlIsThereAnyDeal = "https://isthereanydeal.com/game/" + slugDoJogo + "/info/";
-                    System.out.println("Consultando: " + urlIsThereAnyDeal);
-
-                    String htmlOferta = scrapDaPaginaDoJogo(browser, urlIsThereAnyDeal);
-                    if (!htmlOferta.isBlank()) {
-                        coletarIsThereAnyDeal(htmlOferta);
-                    }
+                    System.out.println("link do jogo na ITAD: " + urlIsThereAnyDeal);
+                    listaLinksJogosITAD.add(urlIsThereAnyDeal);
+                    System.out.println(urlIsThereAnyDeal);
                 }
             }
         } catch (Exception e) {
@@ -150,22 +120,6 @@ public class SteamScrapperApplication {
                 .replaceAll("^-+|-+$", "");
     }
 
-    public static String scrapDaPaginaDoJogo(Browser browser, String linkJogo) {
-        try {
-            Page page = browser.newPage();
-            try {
-                page.navigate(linkJogo, new Page.NavigateOptions().setWaitUntil(WaitUntilState.NETWORKIDLE));
-                page.waitForTimeout(1500);
-                return page.content();
-            } finally {
-                page.close();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return "";
-    }
-
     private static void coletarDoDom(String html, Map<String, JogoExtraido> destino) {
         Document doc = Jsoup.parse(html);
         Elements itens = doc.select("[data-rfd-draggable-id^=WishlistItem-], .PE-3oq-yIvg-");
@@ -188,169 +142,7 @@ public class SteamScrapperApplication {
             String nome = (linkNome != null) ? linkNome.text().trim() : "Nome não encontrado";
             String chave = !dragId.isBlank() ? dragId : (linkNome != null ? linkNome.attr("href") : nome);
 
-            Element precoEl = item.selectFirst("[aria-label*=R$]");
-            String preco;
-            if (precoEl != null) {
-                preco = normalizarEspacos(precoEl.attr("aria-label"));
-            } else {
-                Matcher m = PADRAO_PRECO.matcher(normalizarEspacos(item.text()));
-                List<String> achados = new ArrayList<>();
-                while (m.find()) {
-                    achados.add(m.group().replaceAll("\\s+", ""));
-                }
-                preco = !achados.isEmpty() ? String.join(" / ", achados) : "Preço não encontrado";
-            }
-
-            destino.putIfAbsent(chave, new JogoExtraido(chave, nome, preco));
-        }
-    }
-
-    public static double parsePrecoDouble(String textoPreco) {
-        if (textoPreco == null || textoPreco.isBlank()) {
-            return 0.0;
-        }
-        Matcher matcher = PADRAO_PRECO.matcher(textoPreco.replace('\u00A0', ' '));
-        if (!matcher.find()) {
-            return 0.0;
-        }
-        String limpo = matcher.group()
-                .replace("R$", "")
-                .replaceAll("\\s+", "")
-                .replace(".", "")
-                .replace(",", ".")
-                .trim();
-
-        return limpo.matches("\\d+(\\.\\d+)?") ? Double.parseDouble(limpo) : 0.0;
-    }
-
-    public static double parseDescontoDouble(String textoDesconto) {
-        if (textoDesconto == null || textoDesconto.isBlank()) {
-            return 0.0;
-        }
-        Matcher matcher = PADRAO_DIGITOS.matcher(textoDesconto);
-        return matcher.find() ? Double.parseDouble(matcher.group()) : 0.0;
-    }
-
-    public static OfertaExtraida extrairOferta(Element row) {
-        if (row == null) {
-            return null;
-        }
-
-        Element spanLoja = row.selectFirst(".cell--shop span");
-        String loja = spanLoja != null ? normalizarEspacos(spanLoja.ownText()) : "";
-
-        if (!"Steam".equalsIgnoreCase(loja)) {
-            return null;
-        }
-
-        String urlOferta = normalizarEspacos(row.attr("href"));
-
-        Element promoEl = row.selectFirst(".cell--shop .promo");
-        String tipoPromocao = promoEl != null ? normalizarEspacos(promoEl.text()) : "";
-
-        String menorPrecoHistorico = "";
-        String diferencaMenorPreco = "";
-        Element cellLow = row.selectFirst(".cell--low");
-        if (cellLow != null) {
-            String textoLow = normalizarEspacos(cellLow.text());
-            Matcher mLow = PADRAO_PRECO.matcher(textoLow);
-            List<String> precosLow = new ArrayList<>();
-            while (mLow.find()) {
-                precosLow.add(mLow.group().replaceAll("\\s+", " "));
-            }
-            if (!precosLow.isEmpty()) {
-                menorPrecoHistorico = precosLow.get(0);
-            }
-            if (precosLow.size() >= 2) {
-                diferencaMenorPreco = "lower by " + precosLow.get(1);
-            } else if (textoLow.toLowerCase(Locale.ROOT).contains("same")) {
-                diferencaMenorPreco = "same";
-            }
-        }
-
-        String desconto = "";
-        Element cutCell = row.selectFirst(".cell--cut");
-        if (cutCell != null) {
-            Matcher mCut = PADRAO_DESCONTO.matcher(normalizarEspacos(cutCell.text()));
-            if (mCut.find()) {
-                desconto = mCut.group();
-            }
-        }
-
-        Element expiryEl = row.selectFirst(".cell--cut .expiry");
-        String tempoRestante = expiryEl != null ? normalizarEspacos(expiryEl.text()) : "";
-
-        String precoAtual = "";
-        String precoAntigo = "";
-        Element cellPrice = row.selectFirst(".cell--price");
-        if (cellPrice != null) {
-            Element oldEl = cellPrice.selectFirst(".old");
-            if (oldEl != null) {
-                Matcher mOld = PADRAO_PRECO.matcher(normalizarEspacos(oldEl.text()));
-                if (mOld.find()) {
-                    precoAntigo = mOld.group().replaceAll("\\s+", " ");
-                }
-            }
-
-            Element copiaPreco = cellPrice.clone();
-            Element oldNaCopia = copiaPreco.selectFirst(".old");
-            if (oldNaCopia != null) {
-                oldNaCopia.remove();
-            }
-            Matcher mAtual = PADRAO_PRECO.matcher(normalizarEspacos(copiaPreco.text()));
-            if (mAtual.find()) {
-                precoAtual = mAtual.group().replaceAll("\\s+", " ");
-            }
-
-            double precoAtualDouble = parsePrecoDouble(precoAtual);
-            double descontoDouble = parseDescontoDouble(desconto);
-            double precoAntigoDouble = parsePrecoDouble(precoAntigo);
-
-            if (precoAtualDouble <= 0) {
-                System.out.println("Aviso: preço atual zerado ou inválido para " + urlOferta);
-            }
-            if (precoAntigoDouble == 0 && precoAtualDouble > 0 && descontoDouble > 0 && descontoDouble < 100) {
-                precoAntigoDouble = precoAtualDouble / ((100.0 - descontoDouble) / 100.0);
-                precoAntigo = String.format(Locale.forLanguageTag("pt-BR"), "R$ %.2f", precoAntigoDouble);
-            }
-        }
-
-        return new OfertaExtraida(
-                urlOferta,
-                loja,
-                tipoPromocao,
-                menorPrecoHistorico,
-                diferencaMenorPreco,
-                desconto,
-                tempoRestante,
-                precoAtual,
-                precoAntigo
-        );
-    }
-
-    public static void coletarIsThereAnyDeal(String html) {
-        Document doc = Jsoup.parse(html);
-        Elements linhas = doc.select("a.row");
-
-        boolean encontrouSteam = false;
-        for (Element linha : linhas) {
-            OfertaExtraida oferta = extrairOferta(linha);
-            if (oferta == null) {
-                continue;
-            }
-            encontrouSteam = true;
-
-            System.out.println("URL: " + oferta.urlOferta());
-            System.out.println("Loja: " + oferta.loja());
-            System.out.println("Menor preço (store low): " + oferta.menorPrecoHistorico());
-            System.out.println("Desconto: " + oferta.desconto());
-            System.out.println("Preço atual: " + oferta.precoAtual());
-            System.out.println("Preço antigo: " + oferta.precoAntigo());
-            System.out.println("-----------------------------------");
-        }
-
-        if (!encontrouSteam) {
-            System.out.println("Nenhuma oferta da Steam encontrada na página.");
+            destino.putIfAbsent(chave, new JogoExtraido(chave, nome));
         }
     }
 }
