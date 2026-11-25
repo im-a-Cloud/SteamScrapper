@@ -25,6 +25,8 @@ import java.util.regex.Pattern;
 public class SteamScrapperApplication {
 
     private static final Pattern PADRAO_PRECO = Pattern.compile("R\\$\\s*[\\d.,]+");
+    private static final Pattern PADRAO_DESCONTO = Pattern.compile("-\\d+%");
+    private static final Pattern PADRAO_DIGITOS = Pattern.compile("\\d+");
 
     record JogoExtraido(String chave, String nome, String preco) {}
 
@@ -53,7 +55,6 @@ public class SteamScrapperApplication {
 
             Page page = browser.newPage();
 
-            // Monitora respostas JSON/XHR para identificar a origem dos dados
             page.onResponse(response -> {
                 String contentType = response.headers().getOrDefault("content-type", "");
                 if (contentType.contains("application/json") && response.status() == 200) {
@@ -61,14 +62,12 @@ public class SteamScrapperApplication {
                 }
             });
 
-            // Espera a página carregar por completo e renderizar os itens desejados(itens da WL usando a tagWishlistItem)
             page.navigate(urlWlSteam, new Page.NavigateOptions().setWaitUntil(WaitUntilState.NETWORKIDLE));
             page.waitForSelector(
                     "[data-rfd-draggable-id^=WishlistItem-], [data-rfd-drag-handle-draggable-id^=WishlistItem-], .PE-3oq-yIvg-",
                     new Page.WaitForSelectorOptions().setTimeout(15000)
             );
 
-            // Rola a página para carregar itens virtualizados
             int semAvanco = 0;
             for (int i = 0; i < 40; i++) {
                 int antes = jogos.size();
@@ -98,7 +97,6 @@ public class SteamScrapperApplication {
                 page.waitForTimeout(1000);
             }
 
-            // Processa cada jogo acumulado e consulta a página correspondente
             for (var j : jogos.values()) {
                 String textoPreco = j.preco() != null ? j.preco() : "";
                 List<String> encontrados = new ArrayList<>();
@@ -118,7 +116,7 @@ public class SteamScrapperApplication {
                     String urlIsThereAnyDeal = "https://isthereanydeal.com/game/" + slugDoJogo + "/info/";
                     System.out.println("Consultando: " + urlIsThereAnyDeal);
 
-                    String htmlOferta = scrapDaPaginaDoJogo(urlIsThereAnyDeal);
+                    String htmlOferta = scrapDaPaginaDoJogo(browser, urlIsThereAnyDeal);
                     if (!htmlOferta.isBlank()) {
                         coletarIsThereAnyDeal(htmlOferta);
                     }
@@ -152,15 +150,16 @@ public class SteamScrapperApplication {
                 .replaceAll("^-+|-+$", "");
     }
 
-    public static String scrapDaPaginaDoJogo(String linkJogo) {
-        try (Playwright playwright = Playwright.create();
-             Browser browser = playwright.chromium().launch(
-                     new BrowserType.LaunchOptions().setHeadless(true)
-             )) {
+    public static String scrapDaPaginaDoJogo(Browser browser, String linkJogo) {
+        try {
             Page page = browser.newPage();
-            page.navigate(linkJogo, new Page.NavigateOptions().setWaitUntil(WaitUntilState.NETWORKIDLE));
-            page.waitForTimeout(1500);
-            return page.content();
+            try {
+                page.navigate(linkJogo, new Page.NavigateOptions().setWaitUntil(WaitUntilState.NETWORKIDLE));
+                page.waitForTimeout(1500);
+                return page.content();
+            } finally {
+                page.close();
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -206,6 +205,32 @@ public class SteamScrapperApplication {
         }
     }
 
+    public static double parsePrecoDouble(String textoPreco) {
+        if (textoPreco == null || textoPreco.isBlank()) {
+            return 0.0;
+        }
+        Matcher matcher = PADRAO_PRECO.matcher(textoPreco.replace('\u00A0', ' '));
+        if (!matcher.find()) {
+            return 0.0;
+        }
+        String limpo = matcher.group()
+                .replace("R$", "")
+                .replaceAll("\\s+", "")
+                .replace(".", "")
+                .replace(",", ".")
+                .trim();
+
+        return limpo.matches("\\d+(\\.\\d+)?") ? Double.parseDouble(limpo) : 0.0;
+    }
+
+    public static double parseDescontoDouble(String textoDesconto) {
+        if (textoDesconto == null || textoDesconto.isBlank()) {
+            return 0.0;
+        }
+        Matcher matcher = PADRAO_DIGITOS.matcher(textoDesconto);
+        return matcher.find() ? Double.parseDouble(matcher.group()) : 0.0;
+    }
+
     public static OfertaExtraida extrairOferta(Element row) {
         if (row == null) {
             return null;
@@ -223,7 +248,6 @@ public class SteamScrapperApplication {
         Element promoEl = row.selectFirst(".cell--shop .promo");
         String tipoPromocao = promoEl != null ? normalizarEspacos(promoEl.text()) : "";
 
-        // Menor preço historico e diferença via regex
         String menorPrecoHistorico = "";
         String diferencaMenorPreco = "";
         Element cellLow = row.selectFirst(".cell--low");
@@ -247,7 +271,7 @@ public class SteamScrapperApplication {
         String desconto = "";
         Element cutCell = row.selectFirst(".cell--cut");
         if (cutCell != null) {
-            Matcher mCut = Pattern.compile("-\\d+%").matcher(normalizarEspacos(cutCell.text()));
+            Matcher mCut = PADRAO_DESCONTO.matcher(normalizarEspacos(cutCell.text()));
             if (mCut.find()) {
                 desconto = mCut.group();
             }
@@ -268,7 +292,6 @@ public class SteamScrapperApplication {
                 }
             }
 
-            // Clona para remover .old e pegar só o preço atual
             Element copiaPreco = cellPrice.clone();
             Element oldNaCopia = copiaPreco.selectFirst(".old");
             if (oldNaCopia != null) {
@@ -278,11 +301,18 @@ public class SteamScrapperApplication {
             if (mAtual.find()) {
                 precoAtual = mAtual.group().replaceAll("\\s+", " ");
             }
-            double precoAtualDouble = Double.parseDouble(precoAtual);
-            double descontoDouble = Double.parseDouble(desconto);
-            double precoAntigoDouble = Double.parseDouble(precoAntigo);
-            if (precoAtualDouble <= 0) {}
 
+            double precoAtualDouble = parsePrecoDouble(precoAtual);
+            double descontoDouble = parseDescontoDouble(desconto);
+            double precoAntigoDouble = parsePrecoDouble(precoAntigo);
+
+            if (precoAtualDouble <= 0) {
+                System.out.println("Aviso: preço atual zerado ou inválido para " + urlOferta);
+            }
+            if (precoAntigoDouble == 0 && precoAtualDouble > 0 && descontoDouble > 0 && descontoDouble < 100) {
+                precoAntigoDouble = precoAtualDouble / ((100.0 - descontoDouble) / 100.0);
+                precoAntigo = String.format(Locale.forLanguageTag("pt-BR"), "R$ %.2f", precoAntigoDouble);
+            }
         }
 
         return new OfertaExtraida(

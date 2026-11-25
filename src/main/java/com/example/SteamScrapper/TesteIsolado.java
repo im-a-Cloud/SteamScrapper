@@ -25,7 +25,7 @@ public class TesteIsolado {
     private static final Pattern PADRAO_PORCENTAGEM = Pattern.compile("-?\\d+\\s*%");
     private static final Pattern PADRAO_DIGITOS = Pattern.compile("\\d+");
 
-    // Limiar para suspeitar que o menor histórico pertence a uma tabela de preço antiga (reajuste forte)
+    // Limiar para suspeitar que o menor histórico é de preço antiga (reajuste forte)
     private static final int LIMIAR_DESCONTO_ANOMALO_PCT = 85;
 
     public record OfertaSteamBruta(
@@ -56,7 +56,9 @@ public class TesteIsolado {
     public static void main(String[] args) {
         List<String> urlsTeste = List.of(
                 "https://isthereanydeal.com/game/yakuza-5-remastered/info/",
-                "https://isthereanydeal.com/game/vampire-the-masquerade-bloodlines/info/"
+                "https://isthereanydeal.com/game/vampire-the-masquerade-bloodlines/info/",
+                "https://isthereanydeal.com/game/dark-souls-iii/info/",
+                "https://isthereanydeal.com/game/final-fantasy-vii-remake-intergrade/info/"
         );
 
         boolean headless = true;
@@ -108,7 +110,7 @@ public class TesteIsolado {
         int descontoAtualPct = descontoEmNumero(bruta.descontoAtual());
         int descontoHistoricoExplicitoPct = descontoEmNumero(bruta.descontoHistoricoExplicito());
 
-        // 1. Determina o Preço Cheio Atual Real
+        // Preço Cheio Atual Real
         if (precoCheio == null && precoAtual != null) {
             if (descontoAtualPct > 0 && descontoAtualPct < 100) {
                 BigDecimal fator = BigDecimal.valueOf(100 - descontoAtualPct)
@@ -120,7 +122,7 @@ public class TesteIsolado {
             }
         }
 
-        // 2. Determina o Desconto Histórico da Steam e detecta reajustes bruscos de preço base
+        // Determina o Desconto Histórico da Steam e detecta reajustes bruscos de preço base
         int descontoHistoricoFinal = descontoHistoricoExplicitoPct;
         boolean estimado = false;
         boolean houveReajusteForte = false;
@@ -165,9 +167,7 @@ public class TesteIsolado {
     }
 
     private static void imprimirAnalise(OfertaSteamBruta bruta, AnalisePrecoSteam analise) {
-        System.out.println("Loja                           : " + bruta.loja());
         System.out.println("URL Oferta                     : " + analise.urlOferta());
-        System.out.println("Promoção                       : " + bruta.tipoPromocao());
         System.out.println("Preço atual (Steam)            : R$ " + analise.precoAtual());
         System.out.println("Preço cheio atual (Steam)      : R$ " + analise.precoCheioAtual());
         System.out.println("Desconto atual (Steam)         : -" + analise.descontoAtualPct() + "%");
