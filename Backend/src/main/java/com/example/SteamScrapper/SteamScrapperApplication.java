@@ -62,7 +62,7 @@ public class SteamScrapperApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(SteamScrapperApplication.class, args);
-        /*
+        /*1'
         List <String> listaLinksJogosITAD = new ArrayList<>();
         String urlWlSteam = "https://store.steampowered.com/wishlist/profiles/76561199092903131/?sort=discount";
         Map<String, JogoExtraido> jogos = new LinkedHashMap<>();
