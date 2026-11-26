@@ -62,6 +62,7 @@ public class SteamScrapperApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(SteamScrapperApplication.class, args);
+        /*
         List <String> listaLinksJogosITAD = new ArrayList<>();
         String urlWlSteam = "https://store.steampowered.com/wishlist/profiles/76561199092903131/?sort=discount";
         Map<String, JogoExtraido> jogos = new LinkedHashMap<>();
@@ -117,8 +118,6 @@ public class SteamScrapperApplication {
 
             for (var j : jogos.values()) {
                 List<String> encontrados = new ArrayList<>();
-
-                System.out.println("Nome jogo: "+ j.nome());
 
                 String slugDoJogo = transformarNomeEmLink(j.nome());
                 if (!slugDoJogo.isBlank()) {
@@ -428,5 +427,6 @@ public class SteamScrapperApplication {
             destino.putIfAbsent(chave, new JogoExtraido(chave, nome));
         }
     }
-
+         */
+    }
 }
