@@ -5,13 +5,15 @@ import com.example.SteamScrapper.Model.Entities.Usuario;
 public record UsuarioResponseDTO(
         Long id,
         String nome,
-        String email
+        String email,
+        String linkPerfilSteam
 ) {
     public static UsuarioResponseDTO from(Usuario usuario) {
         return new UsuarioResponseDTO(
                 usuario.getId(),
                 usuario.getNomeUsuario(),
-                usuario.getEmailUsuario()
+                usuario.getEmailUsuario(),
+                usuario.getLinkPerfilSteam()
         );
     }
 }

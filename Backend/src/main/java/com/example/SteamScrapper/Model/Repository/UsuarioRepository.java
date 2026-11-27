@@ -9,4 +9,8 @@ public interface UsuarioRepository extends SoftDeletableRepository<Usuario> {
     Optional<Usuario> findByEmailUsuario(String emailUsuario);
 
     boolean existsByEmailUsuario(String emailUsuario);
+
+    boolean existsByLinkPerfilSteam(String linkPerfilSteam);
+
+    boolean existsByNomeUsuario(String nomeUsuario);
 }

@@ -22,7 +22,7 @@ public class Usuario extends AbstractModel {
     @Column(nullable = false, unique = true)
     private String emailUsuario;
     @NotBlank
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String senhaUsuario;
 
     //links de WL na steam seguem esse formato
@@ -30,6 +30,6 @@ public class Usuario extends AbstractModel {
     //exemplo de link de perfilstea
     //https://steamcommunity.com/profiles/76561198120867657/
     @NotBlank
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String linkPerfilSteam;
 }

@@ -4,6 +4,7 @@ public record TokenResponseDTO(
         String token,
         Long usuarioId,
         String email,
-        String nome
+        String nome,
+        String linkPerfilSteam
 ) {
 }

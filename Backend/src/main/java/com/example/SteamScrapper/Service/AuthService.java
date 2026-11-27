@@ -37,13 +37,21 @@ public class AuthService {
         usuario.setSenhaUsuario(passwordEncoder.encode(dto.senha()));
         usuario.setNomeUsuario(dto.nome());
         usuario.setLinkPerfilSteam(dto.linkSteam());
-
+        if (usuarioRepository.existsByEmailUsuario(dto.email())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "Email já cadastrado");
+        }
+        if (usuarioRepository.existsByLinkPerfilSteam(dto.linkSteam())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "Link da Steam já cadastrado");
+        }
+        if (usuarioRepository.existsByNomeUsuario(dto.nome())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "Nome de usuário já em uso");
+        }
 
         usuario = usuarioRepository.save(usuario);
 
         String token = jwtService.gerarToken(usuario.getId(), usuario.getEmailUsuario());
 
-        return new TokenResponseDTO(token, usuario.getId(), usuario.getEmailUsuario(), usuario.getNomeUsuario());
+        return new TokenResponseDTO(token, usuario.getId(), usuario.getEmailUsuario(), usuario.getNomeUsuario(), usuario.getLinkPerfilSteam());
     }
 
     public TokenResponseDTO login(LoginRequestDTO dto) {
@@ -56,7 +64,7 @@ public class AuthService {
 
         String token = jwtService.gerarToken(usuario.getId(), usuario.getEmailUsuario());
 
-        return new TokenResponseDTO(token, usuario.getId(), usuario.getEmailUsuario(), usuario.getNomeUsuario());
+        return new TokenResponseDTO(token, usuario.getId(), usuario.getEmailUsuario(), usuario.getNomeUsuario(), usuario.getLinkPerfilSteam());
     }
     public List<UsuarioResponseDTO> listarUsuarios() {
         return usuarioRepository.findAll()
